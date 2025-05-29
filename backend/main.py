@@ -1,19 +1,27 @@
+# main.py
+
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session # joinedload is not needed here as crud handles it
 from jose import JWTError, jwt
 import os
 from uuid import uuid4
 
-from . import models, schemas, utils, auth
+from backend import models, schemas, utils, auth, grantee, reviewer, admin
 from .database import engine, SessionLocal
 
-models.Base.metadata.create_all(bind=engine)
-
+# Instantiate the FastAPI app
 app = FastAPI()
 
+# Include routers - These already handle the role-specific endpoints
+app.include_router(auth.router)
+app.include_router(grantee.router)
+app.include_router(reviewer.router)
+app.include_router(admin.router) # This is already correctly included
+
+# Middleware configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
@@ -22,15 +30,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Static files configuration
+UPLOAD_FOLDER = "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=UPLOAD_FOLDER), name="uploads")
+
+# Database models creation
+models.Base.metadata.create_all(bind=engine)
+
+# OAuth2 configuration
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
 SECRET_KEY = auth.SECRET_KEY
 ALGORITHM = auth.ALGORITHM
-UPLOAD_FOLDER = "uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Serve static files publicly under /uploads
-app.mount("/uploads", StaticFiles(directory=UPLOAD_FOLDER), name="uploads")
-
+# Dependency to get DB session
 def get_db():
     db = SessionLocal()
     try:
@@ -38,6 +51,8 @@ def get_db():
     finally:
         db.close()
 
+# Dependency to get current user (used by other routers via dependencies.py)
+# This is a core dependency, so it's fine to keep it here or move to dependencies.py
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -51,10 +66,12 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
 
+# Root endpoint - This is fine to keep here
 @app.get("/")
 def read_root():
     return {"message": "🚀 FastAPI backend is running!"}
 
+# Registration endpoint - This is fine to keep here or move to auth.py
 @app.post("/register", status_code=201)
 def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
     existing = db.query(models.User).filter(models.User.email == user.email).first()
@@ -66,6 +83,7 @@ def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "User created successfully"}
 
+# Login endpoint - This is fine to keep here or move to auth.py
 @app.post("/login", response_model=schemas.Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.email == form_data.username).first()
@@ -75,6 +93,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     access_token = auth.create_access_token(data=token_data)
     return {"access_token": access_token, "token_type": "bearer"}
 
+# Dashboard endpoint - This is fine to keep here
 @app.get("/dashboard")
 def get_dashboard(current_user: models.User = Depends(get_current_user)):
     return {
@@ -82,79 +101,23 @@ def get_dashboard(current_user: models.User = Depends(get_current_user)):
         "role": current_user.role
     }
 
-@app.post("/upload-doc")
-async def upload_document(
-    title: str = Form(...),
-    organization: str = Form(...),
-    file: UploadFile = File(...),
-    current_user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    ext = file.filename.split('.')[-1]
-    filename = f"{uuid4()}.{ext}"
-    filepath = os.path.join(UPLOAD_FOLDER, filename)
-    with open(filepath, "wb") as f:
-        f.write(await file.read())
+# --- REMOVED REDUNDANT ENDPOINTS BELOW ---
+# Document upload endpoint - Now handled by grantee.py
+# @app.post("/upload-doc")
+# async def upload_document(...):
+#    ...
 
-    doc = models.Document(
-        title=title,
-        organization=organization,
-        filename=filename,
-        user_email=current_user.email
-    )
-    db.add(doc)
-    db.commit()
-    return {"message": "✅ Document uploaded successfully."}
+# List documents endpoint - Now handled by reviewer.py and admin.py
+# @app.get("/documents")
+# def list_documents(...):
+#    ...
 
-@app.get("/documents")
-def list_documents(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
-    if current_user.role != "reviewer":
-        raise HTTPException(status_code=403, detail="Access denied")
-    documents = db.query(models.Document).all()
-    result = []
-    for doc in documents:
-        evals = [
-            {
-                "reviewer": e.reviewer.email,
-                "comment": e.comment,
-                "status": e.status,
-            }
-            for e in doc.evaluations
-        ]
-        result.append({
-            "id": doc.id,
-            "title": doc.title,
-            "organization": doc.organization,
-            "filename": doc.filename,
-            "uploaded_by": doc.user_email,
-            "url": f"http://localhost:8000/uploads/{doc.filename}",
-            "evaluations": evals,
-        })
-    return result
+# Evaluate document endpoint - Now handled by reviewer.py
+# @app.post("/documents/{doc_id}/evaluate")
+# def evaluate_document(...):
+#    ...
 
-@app.post("/documents/{doc_id}/evaluate")
-def evaluate_document(
-    doc_id: int,
-    evaluation: schemas.EvaluationCreate,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
-):
-    if current_user.role != "reviewer":
-        raise HTTPException(status_code=403, detail="Only reviewers can evaluate")
-
-    existing = db.query(models.DocumentEvaluation).filter_by(
-        document_id=doc_id, reviewer_id=current_user.id
-    ).first()
-    if existing:
-        existing.comment = evaluation.comment
-        existing.status = evaluation.status
-    else:
-        eval = models.DocumentEvaluation(
-            document_id=doc_id,
-            reviewer_id=current_user.id,
-            comment=evaluation.comment,
-            status=evaluation.status,
-        )
-        db.add(eval)
-    db.commit()
-    return {"message": "Evaluation saved"}
+# Grantee documents endpoint - Now handled by grantee.py
+# @app.get("/grantee/documents")
+# def get_grantee_documents_with_evaluations(...):
+#    ...

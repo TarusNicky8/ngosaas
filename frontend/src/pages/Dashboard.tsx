@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
-import { fetchDashboard, uploadDocument, fetchDocuments } from "../services/api";
+// Removed 'uploadDocument' as it's no longer used directly in this component
+import { fetchDashboard, fetchDocuments } from "../services/api";
 import { useNavigate } from "react-router-dom";
+import GranteeDashboard from './GranteeDashboard';
+import AdminDashboard from './AdminDashboard'; // Import the new AdminDashboard component
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -8,11 +11,7 @@ export default function Dashboard() {
 
   const [message, setMessage] = useState("");
   const [role, setRole] = useState("");
-  const [title, setTitle] = useState("");
-  const [organization, setOrganization] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [uploadMessage, setUploadMessage] = useState("");
-  const [documents, setDocuments] = useState<any[]>([]);
+  const [documents, setDocuments] = useState<any[]>([]); // For reviewer documents
 
   useEffect(() => {
     if (!token) {
@@ -20,15 +19,16 @@ export default function Dashboard() {
       return;
     }
 
-    // 👇 Define and call async logic inside useEffect
     const loadDashboard = async () => {
       try {
         const res = await fetchDashboard(token);
         setMessage(res.message);
         setRole(res.role);
 
+        // If the user is a reviewer, fetch all documents for review
+        // AdminDashboard will fetch its own documents
         if (res.role === "reviewer") {
-          const docs = await fetchDocuments(token);
+          const docs = await fetchDocuments(token); // This should ideally be fetchReviewerDocuments from api.ts
           setDocuments(docs);
         }
       } catch (err) {
@@ -38,19 +38,7 @@ export default function Dashboard() {
     };
 
     loadDashboard();
-  }, [token, navigate]);
-
-  const handleUpload = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!file || !title || !organization) return alert("All fields required");
-    try {
-      const res = await uploadDocument(title, organization, file, token);
-      setUploadMessage(res.message);
-    } catch (err) {
-      console.error(err);
-      setUploadMessage("❌ Upload failed");
-    }
-  };
+  }, [token, navigate]); // Added navigate to dependency array as per ESLint best practice
 
   return (
     <div style={{ padding: 20 }}>
@@ -58,49 +46,27 @@ export default function Dashboard() {
       <p>{message}</p>
       {role && <p><strong>Role:</strong> {role}</p>}
 
-      {role === "grantee" && (
-        <form onSubmit={handleUpload}>
-          <input
-            type="text"
-            placeholder="Title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            required
-          />
-          <input
-            type="text"
-            placeholder="Organization"
-            value={organization}
-            onChange={(e) => setOrganization(e.target.value)}
-            required
-          />
-          <input
-            type="file"
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
-            required
-          />
-          <button type="submit">Upload</button>
-          <p>{uploadMessage}</p>
-        </form>
-      )}
-
+      {/* Conditionally render dashboards based on role */}
+      {role === "grantee" && <GranteeDashboard />}
       {role === "reviewer" && (
         <div>
-          <h3>📂 Submitted Documents</h3>
+          <h3>📂 Submitted Documents (for Reviewer)</h3>
           {documents.length === 0 ? (
-            <p>No documents found.</p>
+            <p>No documents found for review.</p>
           ) : (
             <ul>
               {documents.map((doc, index) => (
                 <li key={index}>
                   <strong>{doc.title}</strong> from {doc.organization} by{" "}
                   {doc.submitted_by || doc.owner_email || "Unknown"}
+                  {/* You might want to add a link to review the document here */}
                 </li>
               ))}
             </ul>
           )}
         </div>
       )}
+      {role === "admin" && <AdminDashboard />} {/* Render AdminDashboard for admin role */}
     </div>
   );
 }
