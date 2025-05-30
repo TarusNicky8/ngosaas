@@ -1,72 +1,72 @@
-import { useEffect, useState } from "react";
-// Removed 'uploadDocument' as it's no longer used directly in this component
-import { fetchDashboard, fetchDocuments } from "../services/api";
+import React, { useEffect, useState, useCallback } from "react";
+import { fetchDashboard } from "../services/api";
 import { useNavigate } from "react-router-dom";
 import GranteeDashboard from './GranteeDashboard';
-import AdminDashboard from './AdminDashboard'; // Import the new AdminDashboard component
+import ReviewerDashboard from './ReviewerDashboard'; // Ensure this is imported
+import AdminDashboard from './AdminDashboard'; // Ensure this is imported
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const [role, setRole] = useState<string | null>(null); // Initialize role as null
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const token = localStorage.getItem("token") || "";
 
-  const [message, setMessage] = useState("");
-  const [role, setRole] = useState("");
-  const [documents, setDocuments] = useState<any[]>([]); // For reviewer documents
-
-  useEffect(() => {
+  const loadDashboardData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     if (!token) {
       navigate("/login");
       return;
     }
 
-    const loadDashboard = async () => {
-      try {
-        const res = await fetchDashboard(token);
-        setMessage(res.message);
-        setRole(res.role);
+    try {
+      const res = await fetchDashboard(token);
+      setRole(res.role);
+    } catch (err) {
+      console.error("Dashboard load error", err);
+      setError("Failed to load dashboard. Please try logging in again.");
+      localStorage.removeItem('token'); // Clear invalid token
+      localStorage.removeItem('role');
+      navigate("/login"); // Redirect to login on error
+    } finally {
+      setLoading(false);
+    }
+  }, [token, navigate]);
 
-        // If the user is a reviewer, fetch all documents for review
-        // AdminDashboard will fetch its own documents
-        if (res.role === "reviewer") {
-          const docs = await fetchDocuments(token); // This should ideally be fetchReviewerDocuments from api.ts
-          setDocuments(docs);
-        }
-      } catch (err) {
-        console.error("Dashboard load error", err);
-        setMessage("Failed to load dashboard");
-      }
-    };
+  useEffect(() => {
+    loadDashboardData();
+  }, [loadDashboardData]);
 
-    loadDashboard();
-  }, [token, navigate]); // Added navigate to dependency array as per ESLint best practice
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-100">
+        <p className="text-lg text-gray-700">Loading your dashboard...</p>
+      </div>
+    );
+  }
 
-  return (
-    <div style={{ padding: 20 }}>
-      <h2>Dashboard</h2>
-      <p>{message}</p>
-      {role && <p><strong>Role:</strong> {role}</p>}
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-red-50">
+        <p className="text-lg text-red-700 font-medium">Error: {error}</p>
+      </div>
+    );
+  }
 
-      {/* Conditionally render dashboards based on role */}
-      {role === "grantee" && <GranteeDashboard />}
-      {role === "reviewer" && (
-        <div>
-          <h3>📂 Submitted Documents (for Reviewer)</h3>
-          {documents.length === 0 ? (
-            <p>No documents found for review.</p>
-          ) : (
-            <ul>
-              {documents.map((doc, index) => (
-                <li key={index}>
-                  <strong>{doc.title}</strong> from {doc.organization} by{" "}
-                  {doc.submitted_by || doc.owner_email || "Unknown"}
-                  {/* You might want to add a link to review the document here */}
-                </li>
-              ))}
-            </ul>
-          )}
+  // Render specific dashboard based on role
+  switch (role) {
+    case "grantee":
+      return <GranteeDashboard />;
+    case "reviewer":
+      return <ReviewerDashboard />;
+    case "admin":
+      return <AdminDashboard />;
+    default:
+      return (
+        <div className="flex items-center justify-center min-h-screen bg-gray-100">
+          <p className="text-lg text-gray-700">No role assigned or invalid role.</p>
         </div>
-      )}
-      {role === "admin" && <AdminDashboard />} {/* Render AdminDashboard for admin role */}
-    </div>
-  );
+      );
+  }
 }
