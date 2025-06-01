@@ -1,16 +1,21 @@
+# backend/alembic/env.py
+
+import os
+import sys
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
 from alembic import context
-import sys
-import os
 
 # Add the project root to sys.path
+# This is a good practice to ensure imports like 'backend.models' work correctly.
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
-from backend.models import Base  # Replace 'Base' with the actual declarative base in models.py
+# Import your Base here.
+# Make sure this path is correct based on where your 'Base' object is defined.
+from backend.models import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -23,14 +28,18 @@ if config.config_file_name is not None:
 
 # add your model's MetaData object here
 # for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
 target_metadata = Base.metadata
 
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
+# --- CRITICAL ADDITION STARTS HERE ---
+# Get the database URL from the environment variable.
+# This ensures Alembic uses the PostgreSQL URL you set in your terminal.
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+if DATABASE_URL:
+    # Set the 'sqlalchemy.url' option in Alembic's configuration to the DATABASE_URL.
+    # This is what 'engine_from_config' expects.
+    config.set_main_option("sqlalchemy.url", DATABASE_URL)
+# --- CRITICAL ADDITION ENDS HERE ---
 
 
 def run_migrations_offline() -> None:
