@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, joinedload
 from passlib.context import CryptContext
 from datetime import datetime
 from typing import List, Optional # Import Optional for type hints
-from . import models, schemas # Assuming models.py defines the SQLAlchemy models
+import models, schemas # Assuming models.py defines the SQLAlchemy models
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
