@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from typing import List
 import os
 
-import crud, schemas, models, dependencies
+from backend import crud, schemas, models, dependencies
 
 router = APIRouter(prefix="/reviewer", tags=["reviewer"])
 

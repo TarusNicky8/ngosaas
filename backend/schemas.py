@@ -31,11 +31,10 @@ class EvaluationOut(BaseModel):
     reviewer_email: Optional[str] = None
     created_at: datetime
 
-    # --- UPDATED FOR PYDANTIC V2 ---
-    model_config = {
-        "from_attributes": True
-    }
-    # -------------------------------
+    # --- THIS IS THE CORRECT SYNTAX FOR PYDANTIC V1 ---
+    class Config:
+        orm_mode = True
+    # -------------------------------------------------
 
 class UserOut(BaseModel):
     id: int
@@ -43,11 +42,10 @@ class UserOut(BaseModel):
     full_name: Optional[str] = None
     role: str
 
-    # --- UPDATED FOR PYDANTIC V2 ---
-    model_config = {
-        "from_attributes": True
-    }
-    # -------------------------------
+    # --- THIS IS THE CORRECT SYNTAX FOR PYDANTIC V1 ---
+    class Config:
+        orm_mode = True
+    # -------------------------------------------------
 
 class DocumentOut(BaseModel):
     id: int
@@ -62,11 +60,10 @@ class DocumentOut(BaseModel):
 
     evaluations: List[EvaluationOut] = []
 
-    # --- UPDATED FOR PYDANTIC V2 ---
-    model_config = {
-        "from_attributes": True
-    }
-    # -------------------------------
+    # --- THIS IS THE CORRECT SYNTAX FOR PYDANTIC V1 ---
+    class Config:
+        orm_mode = True
+    # -------------------------------------------------
 
 class DocumentEvaluationOut(BaseModel):
     id: int
@@ -76,11 +73,10 @@ class DocumentEvaluationOut(BaseModel):
     status: str
     created_at: datetime
 
-    # --- UPDATED FOR PYDANTIC V2 ---
-    model_config = {
-        "from_attributes": True
-    }
-    # -------------------------------
+    # --- THIS IS THE CORRECT SYNTAX FOR PYDANTIC V1 ---
+    class Config:
+        orm_mode = True
+    # -------------------------------------------------
 
 class AssignReviewer(BaseModel):
     """Schema for assigning a reviewer to a document."""
