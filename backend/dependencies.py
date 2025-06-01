@@ -3,8 +3,8 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
-import crud, models
-from .database import SessionLocal
+from backend import crud, models
+from backend.database import SessionLocal
 from typing import Generator
 
 # Secret key and algorithm (use env vars in prod)

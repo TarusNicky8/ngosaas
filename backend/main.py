@@ -9,8 +9,8 @@ from jose import JWTError, jwt
 import os # Ensure os module is imported
 from uuid import uuid4
 
-import models, schemas, utils, auth, grantee, reviewer, admin
-from .database import engine, SessionLocal
+from backend import models, schemas, utils, auth, grantee, reviewer, admin
+from backend.database import engine, SessionLocal
 
 # Instantiate the FastAPI app
 app = FastAPI()
