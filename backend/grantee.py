@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status,
 from sqlalchemy.orm import Session
 from typing import List
 
-from backend import crud, schemas, models, dependencies
+from . import crud, schemas, models, dependencies
 
 router = APIRouter(prefix="/grantee", tags=["grantee"])
 

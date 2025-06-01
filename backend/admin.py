@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
-from backend import crud, schemas, models, dependencies # Adjust 'backend' import based on your project structure
+from . import crud, schemas, models, dependencies # Adjust 'backend' import based on your project structure
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 

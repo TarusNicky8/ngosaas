@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from jose import jwt
 from datetime import datetime, timedelta
 
-from backend import crud, schemas, models, dependencies
+from . import crud, schemas, models, dependencies
 
 router = APIRouter(tags=["auth"])
 
