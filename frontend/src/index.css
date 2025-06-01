@@ -5,7 +5,7 @@
     /* You can add any custom global CSS here if needed */
     body {
       margin: 0;
-      font-family: 'Inter', sans-serif;
+      font-family: 'Inter', sans-serif; /* Using Inter as per instructions */
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
     }

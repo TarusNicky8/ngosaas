@@ -6,7 +6,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session # joinedload is not needed here as crud handles it
 from jose import JWTError, jwt
-import os
+import os # Ensure os module is imported
 from uuid import uuid4
 
 from backend import models, schemas, utils, auth, grantee, reviewer, admin
@@ -22,12 +22,17 @@ app.include_router(reviewer.router)
 app.include_router(admin.router) # This is already correctly included
 
 # Middleware configuration
+# Get allowed origins from environment variable, default to common ones for local development.
+# You will set REACT_APP_FRONTEND_URL on Vercel and FRONTEND_URL on Render.
+# In production, `FRONTEND_URL` on Render will point to your Vercel app's URL.
+allowed_origins = os.environ.get("FRONTEND_URL", "http://localhost:3000,http://localhost:5173").split(',')
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=allowed_origins, # Dynamically set allowed origins
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"], # Allow all methods (GET, POST, PUT, DELETE, etc.)
+    allow_headers=["*"], # Allow all headers
 )
 
 # Static files configuration
