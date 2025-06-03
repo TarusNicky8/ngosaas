@@ -1,0 +1,52 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# Node dependencies (frontend)
+/frontend/node_modules
+/frontend/.pnp
+/frontend/.pnp.js
+
+# Frontend testing/production
+/frontend/coverage
+/frontend/build
+
+# Frontend misc
+/frontend/.env.local
+/frontend/.env.development.local
+/frontend/.env.test.local
+/frontend/.env.production.local
+/frontend/npm-debug.log*
+/frontend/yarn-debug.log*
+/frontend/yarn-error.log*
+
+# Python bytecode (backend and root)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment (assuming it's in the root or a subfolder)
+venv/
+.venv/
+/backend/venv/ # If your venv is specifically inside backend/
+
+# Database files
+*.sqlite3
+*.db
+*.db-*
+
+# Environment variables
+.env
+.env.*
+*.env
+
+# Uploaded files (if your backend handles file uploads to a local folder)
+uploads/
+
+# IDE specific files
+.vscode/
+.idea/
+*.iml
+
+# OS generated files
+.DS_Store
+Thumbs.db
