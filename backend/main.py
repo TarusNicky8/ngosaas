@@ -3,14 +3,15 @@
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session # joinedload is not needed here as crud handles it
 from jose import JWTError, jwt
 import os
 from uuid import uuid4
 
+# Corrected imports: Ensure these are relative if backend/main.py is at the root on Render
+# However, with PYTHONPATH=backend, these should work as is.
 from backend import models, schemas, utils, auth, grantee, reviewer, admin
-from .database import engine, SessionLocal
+from backend.database import engine, SessionLocal # Use backend.database as it's within the backend package
 
 # Instantiate the FastAPI app
 app = FastAPI()
@@ -19,16 +20,29 @@ app = FastAPI()
 app.include_router(auth.router)
 app.include_router(grantee.router)
 app.include_router(reviewer.router)
-app.include_router(admin.router) # This is already correctly included
+app.include_router(admin.router)
 
-# Middleware configuration
+# --- CRUCIAL CORRECTION FOR CORS ---
+# Get the frontend URL from environment variable for CORS
+# This will be set on Render to https://ngosaas-frontend.vercel.app
+# For local development, it will default to http://localhost:3000
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+
+origins = [
+    FRONTEND_URL,
+    "http://localhost:3000", # For local frontend development
+    "http://localhost:8000", # For local backend testing directly
+    # Add any other origins your frontend might be deployed on (e.g., Vercel preview URLs)
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=origins, # Use the dynamic origins list
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# --- END CORS CORRECTION ---
 
 # Static files configuration
 UPLOAD_FOLDER = "uploads"
@@ -52,7 +66,6 @@ def get_db():
         db.close()
 
 # Dependency to get current user (used by other routers via dependencies.py)
-# This is a core dependency, so it's fine to keep it here or move to dependencies.py
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -71,8 +84,8 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 def read_root():
     return {"message": "🚀 FastAPI backend is running!"}
 
-# Registration endpoint - This is fine to keep here or move to auth.py
-@app.post("/register", status_code=201)
+# Registration endpoint - ADDED operation_id and response_model for clarity/warnings
+@app.post("/register", status_code=201, response_model=schemas.Token, operation_id="register_user_account")
 def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
     existing = db.query(models.User).filter(models.User.email == user.email).first()
     if existing:
@@ -81,7 +94,11 @@ def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
     db_user = models.User(email=user.email, hashed_password=hashed_pw, role=user.role)
     db.add(db_user)
     db.commit()
-    return {"message": "User created successfully"}
+    # Return a token upon successful registration for immediate login experience
+    token_data = {"sub": db_user.email, "role": db_user.role}
+    access_token = auth.create_access_token(data=token_data)
+    return {"access_token": access_token, "token_type": "bearer"}
+
 
 # Login endpoint - This is fine to keep here or move to auth.py
 @app.post("/login", response_model=schemas.Token)
