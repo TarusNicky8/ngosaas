@@ -1,7 +1,13 @@
 // frontend/services/api.ts
 import axios from 'axios';
 
-export const API_BASE = 'http://localhost:8000';
+// Dynamically set API_BASE based on the environment
+// In production (e.g., on Render), process.env.NODE_ENV will be 'production'
+// In local development, it will be 'development'
+export const API_BASE =
+  process.env.NODE_ENV === 'production'
+    ? process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000' // Fallback for safety
+    : 'http://localhost:8000'; // For local development
 
 const api = axios.create({
   baseURL: API_BASE,
