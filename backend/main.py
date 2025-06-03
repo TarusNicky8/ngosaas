@@ -3,7 +3,8 @@
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session # joinedload is not needed here as crud handles it
+from fastapi.staticfiles import StaticFiles # <--- THIS LINE IS NOW ADDED/UNCOMMENTED
+from sqlalchemy.orm import Session
 from jose import JWTError, jwt
 import os
 from uuid import uuid4
