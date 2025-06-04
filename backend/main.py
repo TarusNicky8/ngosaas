@@ -5,17 +5,20 @@ from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, F
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 # Remove StaticFiles if you are no longer serving uploads directly from FastAPI
-# from fastapi.staticfiles import StaticFiles # <--- REMOVE THIS LINE IF YOU ARE USING SUPABASE STORAGE
+# from fastapi.staticfiles import StaticFiles # <--- REMOVED THIS LINE
+
 from sqlalchemy.orm import Session
 from jose import JWTError, jwt
 from uuid import uuid4 # For unique filenames
 
 # For Supabase integration
 from supabase import create_client, Client
-from typing import List, Annotated, Optional # Added for type hinting and Annotated
-from datetime import timedelta # Added for token expiration in login
+from typing import List, Annotated, Optional
+from datetime import timedelta
 
 # Corrected imports for internal modules
+# Ensure these are relative if backend/main.py is at the root on Render
+# However, with PYTHONPATH=backend, these should work as is.
 from backend import models, schemas, utils, auth, grantee, reviewer, admin
 from backend.database import engine, SessionLocal
 
@@ -32,16 +35,12 @@ app.include_router(reviewer.router)
 app.include_router(admin.router)
 
 # CORS Configuration
-# Get the frontend URL from environment variable for CORS
-# This will be set on Render to https://ngosaas-frontend.vercel.app
-# For local development, it will default to http://localhost:3000,http://localhost:5173
-# Use .split(',') to handle multiple origins if needed
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000,http://localhost:5173")
 origins = [origin.strip() for origin in FRONTEND_URL.split(',')]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins, # Use the dynamic origins list
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -55,13 +54,13 @@ app.add_middleware(
 # --- END REMOVED STATIC FILES ---
 
 
-# OAuth2 configuration
+# OAuth2 configuration (using auth.py's SECRET_KEY and ALGORITHM)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login") # Changed to relative path "login"
 
 # Supabase Configuration
-SUPABASE_URL = os.environ.get("SUPABASE_URL") # e.g., https://xxxx.supabase.co
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-SUPABASE_STORAGE_BUCKET = os.environ.get("SUPABASE_STORAGE_BUCKET", "documents") # Default to 'documents'
+SUPABASE_STORAGE_BUCKET = os.environ.get("SUPABASE_STORAGE_BUCKET", "documents")
 
 supabase_client: Optional[Client] = None
 if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY:
@@ -80,31 +79,21 @@ async def upload_file_to_supabase(file: UploadFile):
     if not supabase_client:
         raise HTTPException(status_code=500, detail="Supabase client not configured.")
 
-    # Generate a unique filename
     file_extension = os.path.splitext(file.filename)[1]
-    supabase_filename = f"{uuid4()}{file_extension}" # Use uuid4 directly from uuid import
+    supabase_filename = f"{uuid4()}{file_extension}"
 
     try:
-        # Upload file to Supabase Storage
-        # The path will be /{bucket_name}/{supabase_filename}
         response = supabase_client.storage.from_(SUPABASE_STORAGE_BUCKET).upload(
             file=await file.read(),
             path=supabase_filename,
             file_options={"content-type": file.content_type}
         )
 
-        # Supabase client.storage.from_().upload returns a dictionary on success
-        # and raises an exception on failure (or returns an error response in some cases).
-        # We need to check the structure based on actual supabase-py behavior.
-        # Assuming a successful upload returns a dict with 'Key' or similar info.
-        # The public URL is constructed manually.
-        if response and "Key" in response: # Check for success key in response
-            # Construct the public URL
-            # Supabase public URL format: {SUPABASE_URL}/storage/v1/object/public/{bucket_name}/{path_to_file}
+        if response and "Key" in response:
             public_url = f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_STORAGE_BUCKET}/{supabase_filename}"
             return public_url, supabase_filename
         else:
-            print(f"Supabase upload error: {response}") # Log the full response for debugging
+            print(f"Supabase upload error: {response}")
             raise HTTPException(status_code=500, detail=f"Failed to upload file to Supabase Storage: {response}")
     except Exception as e:
         print(f"An unexpected error occurred during Supabase upload: {e}")
@@ -119,24 +108,16 @@ def get_db():
     finally:
         db.close()
 
-# OAuth2 configuration (using auth.py's SECRET_KEY and ALGORITHM)
+# These are now imported from auth.py
 SECRET_KEY = auth.SECRET_KEY
 ALGORITHM = auth.ALGORITHM
 
 # Helper function to get current user (used by other routers via dependencies.py)
 # This is a core dependency, so it's fine to keep it here or move to dependencies.py
 async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], db: Session = Depends(get_db)):
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        if email is None:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
-        user = db.query(models.User).filter(models.User.email == email).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-        return user
-    except JWTError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+    # Use auth.get_current_user which now handles token decoding and user retrieval
+    return auth.get_current_user(db, token)
+
 
 # Helper function to get current active user (for protected routes)
 async def get_current_active_user(current_user: Annotated[models.User, Depends(get_current_user)]):
@@ -182,7 +163,6 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     db_user = crud.get_user_by_email(db, email=user.email)
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
-    # Assuming crud.create_user handles hashing and adding to DB
     return crud.create_user(db=db, user=user)
 
 # Login endpoint
@@ -221,19 +201,22 @@ async def upload_document_route(
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file provided.")
 
-    # Upload file to Supabase Storage
     supabase_url, supabase_filename = await upload_file_to_supabase(file)
 
-    # Create document record in DB with Supabase URL and filename
     document_data = schemas.DocumentCreate(
         title=title,
         organization=organization,
-        filename=supabase_filename, # Store the unique filename in Supabase Storage
-        url=supabase_url, # Store the Supabase public URL
-        uploaded_by=current_user.email,
-        grantee_id=current_user.id
+        filename=supabase_filename,
+        url=supabase_url,
+        grantee_id=current_user.id # Use current_user.id for grantee_id
     )
     db_document = crud.create_document(db=db, document=document_data)
+
+    # Manually populate uploaded_by and assigned_reviewer_email for the response model
+    # as these are not directly stored in the Document model but are derived for output.
+    db_document.uploaded_by = current_user.email
+    db_document.assigned_reviewer_email = None # Initially no reviewer assigned
+
     return db_document
 
 @app.get("/grantee/documents", response_model=List[schemas.DocumentOut])
@@ -244,7 +227,10 @@ async def get_grantee_documents(
     print(f"[GET DOCS] User: {current_user.id} ({current_user.email}), Role: {current_user.role}")
     documents = crud.get_documents_by_grantee(db, grantee_id=current_user.id)
     print(f"[GET DOCS] Found {len(documents)} documents for Grantee ID={current_user.id}")
+    # Populate derived fields for DocumentOut schema
     for doc in documents:
+        doc.uploaded_by = doc.uploader.email if doc.uploader else None
+        doc.assigned_reviewer_email = doc.assigned_reviewer_obj.email if doc.assigned_reviewer_obj else None
         evaluations_data = crud.get_evaluations_for_document(db, document_id=doc.id)
         doc.evaluations = [
             schemas.EvaluationOut(
@@ -269,10 +255,12 @@ async def get_reviewer_documents(
     db: Session = Depends(get_db)
 ):
     print(f"[REVIEWER DOCS] User: {current_user.id} ({current_user.email}), Role: {current_user.role}")
-    # Fetch documents assigned to this specific reviewer
     documents = crud.get_documents_by_reviewer(db, reviewer_id=current_user.id)
     print(f"[REVIEWER DOCS] Found {len(documents)} documents for Reviewer ID={current_user.id}")
+    # Populate derived fields for DocumentOut schema
     for doc in documents:
+        doc.uploaded_by = doc.uploader.email if doc.uploader else None
+        doc.assigned_reviewer_email = doc.assigned_reviewer_obj.email if doc.assigned_reviewer_obj else None
         evaluations_data = crud.get_evaluations_for_document(db, document_id=doc.id)
         doc.evaluations = [
             schemas.EvaluationOut(
@@ -329,7 +317,10 @@ async def list_documents(
 ):
     print(f"[ADMIN] User: {current_user.id} ({current_user.email}), Role: {current_user.role} is listing all documents.")
     documents = crud.get_all_documents(db)
+    # Populate derived fields for DocumentOut schema
     for doc in documents:
+        doc.uploaded_by = doc.uploader.email if doc.uploader else None
+        doc.assigned_reviewer_email = doc.assigned_reviewer_obj.email if doc.assigned_reviewer_obj else None
         evaluations_data = crud.get_evaluations_for_document(db, document_id=doc.id)
         doc.evaluations = [
             schemas.EvaluationOut(
@@ -353,13 +344,9 @@ async def assign_reviewer_to_document_route(
     if not db_document:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Populate assigned_reviewer_email for the response
-    if db_document.assigned_reviewer:
-        db_document.assigned_reviewer_email = db_document.assigned_reviewer.email
-    else:
-        db_document.assigned_reviewer_email = None
-
-    # Also populate evaluations for the response
+    # Populate derived fields for the response
+    db_document.uploaded_by = db_document.uploader.email if db_document.uploader else None
+    db_document.assigned_reviewer_email = db_document.assigned_reviewer_obj.email if db_document.assigned_reviewer_obj else None
     evaluations_data = crud.get_evaluations_for_document(db, document_id=db_document.id)
     db_document.evaluations = [
         schemas.EvaluationOut(

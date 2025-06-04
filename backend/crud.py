@@ -5,8 +5,8 @@ from typing import List, Optional
 
 # Assuming models.py defines the SQLAlchemy models and schemas.py defines Pydantic schemas
 from . import models, schemas
-# Import password hashing from auth.py, as main.py uses it
-from .auth import get_password_hash, verify_password # Ensure verify_password is also available here if needed for crud direct calls.
+# Import password hashing/verification from utils, NOT from auth
+from backend.utils import get_password_hash, verify_password
 
 # --- User CRUD Operations ---
 def get_user(db: Session, user_id: int) -> Optional[models.User]:
@@ -23,7 +23,7 @@ def get_all_users(db: Session, skip: int = 0, limit: int = 100) -> List[models.U
 
 def create_user(db: Session, user: schemas.UserCreate) -> models.User:
     """Create a new user."""
-    hashed_password = get_password_hash(user.password) # Use hash function from auth.py
+    hashed_password = get_password_hash(user.password) # Use hash function from utils
     db_user = models.User(
         email=user.email,
         hashed_password=hashed_password,
@@ -97,7 +97,7 @@ def assign_reviewer_to_document(db: Session, document_id: int, reviewer_id: int)
         db.commit()
         db.refresh(db_document)
         # Re-query with eager loading to ensure relationships are fresh for the returned object
-        return get_document(db, document_id)
+        return get_document(db, document_id) # Use the eager-loading get_document helper
     return None
 
 # --- Evaluation CRUD Operations ---
