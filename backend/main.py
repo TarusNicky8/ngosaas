@@ -281,7 +281,7 @@ async def get_reviewer_documents(
 @app.post("/reviewer/documents/{document_id}/evaluate", response_model=schemas.EvaluationOut)
 async def submit_document_evaluation(
     document_id: int,
-    evaluation: schemas.DocumentEvaluationCreate,
+    evaluation: schemas.EvaluationCreate, # <--- CHANGED FROM schemas.DocumentEvaluationCreate
     current_user: Annotated[models.User, Depends(get_current_reviewer_user)],
     db: Session = Depends(get_db)
 ):

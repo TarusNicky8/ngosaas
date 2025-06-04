@@ -1,13 +1,16 @@
 # backend/schemas.py
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, Field # Import Field for default_factory
-from typing import List, Optional # Ensure Optional is imported
+from pydantic import BaseModel, EmailStr, Field
+from typing import List, Optional
+
+# Import models for type hinting in the mapping function
+from backend import models # Assuming backend is the package root
 
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
     role: str
-    full_name: Optional[str] = None # Added full_name based on models.py
+    full_name: Optional[str] = None
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -21,15 +24,13 @@ class EvaluationCreate(BaseModel):
     comment: str
     status: str
 
-# --- NEW SCHEMA FOR DOCUMENT CREATION WITH SUPABASE DETAILS ---
 class DocumentCreate(BaseModel):
     title: str
     organization: str
-    filename: str # This will be the Supabase Storage path/filename
-    url: str      # This will be the Supabase public URL
+    filename: str
+    url: str
     grantee_id: int
     assigned_reviewer_id: Optional[int] = None
-# -------------------------------------------------------------
 
 class EvaluationOut(BaseModel):
     id: int
@@ -38,59 +39,68 @@ class EvaluationOut(BaseModel):
     reviewer_email: Optional[str] = None
     created_at: datetime
 
-    # --- PYDANTIC V2 SYNTAX ---
     model_config = {
         "from_attributes": True
     }
-    # --------------------------
 
 class UserOut(BaseModel):
     id: int
     email: EmailStr
-    full_name: Optional[str] = None # Added full_name
+    full_name: Optional[str] = None
     role: str
 
-    # --- PYDANTIC V2 SYNTAX ---
     model_config = {
         "from_attributes": True
     }
-    # --------------------------
 
 class DocumentOut(BaseModel):
     id: int
     title: str
     organization: str
     filename: str
-    url: str # DocumentOut now expects a URL (non-optional as per new model)
-    uploaded_by: Optional[str] = None # This field is from your old model/logic, ensure it's populated
-    grantee_id: Optional[int] = None # Still optional if not always populated by ORM
+    url: str
+    uploaded_by: Optional[str] = None
+    grantee_id: Optional[int] = None # Added grantee_id to DocumentOut for checks in routers
     assigned_reviewer_id: Optional[int] = None
     assigned_reviewer_email: Optional[str] = None
 
-    evaluations: List[EvaluationOut] = Field(default_factory=list) # Use Field for default_factory
+    evaluations: List[EvaluationOut] = Field(default_factory=list)
 
-    # --- PYDANTIC V2 SYNTAX ---
     model_config = {
         "from_attributes": True
     }
-    # --------------------------
 
-class DocumentEvaluationOut(BaseModel): # This schema seems redundant if EvaluationOut is used.
-                                        # If you use EvaluationOut for all evaluation responses,
-                                        # you can remove this schema.
-    id: int
-    document_id: int
-    reviewer_id: int
-    comment: str
-    status: str
-    created_at: datetime
-
-    # --- PYDANTIC V2 SYNTAX ---
-    model_config = {
-        "from_attributes": True
-    }
-    # --------------------------
+# Removed DocumentEvaluationOut as it was redundant with EvaluationOut
 
 class AssignReviewer(BaseModel):
-    """Schema for assigning a reviewer to a document."""
     reviewer_id: int
+
+# --- NEW HELPER FUNCTION FOR MAPPING MODELS TO SCHEMAS ---
+def map_document_model_to_out_schema(doc_model: "models.Document") -> DocumentOut:
+    """
+    Maps a SQLAlchemy Document model object to a Pydantic DocumentOut schema.
+    Handles loading related evaluations and populating derived fields.
+    """
+    evalu_out_list = []
+    if doc_model.evaluations:
+        for eval_item in doc_model.evaluations:
+            eval_out_list.append(EvaluationOut(
+                id=eval_item.id,
+                comment=eval_item.comment,
+                status=eval_item.status,
+                reviewer_email=eval_item.reviewer.email if eval_item.reviewer else None,
+                created_at=eval_item.created_at
+            ))
+
+    return DocumentOut(
+        id=doc_model.id,
+        title=doc_model.title,
+        organization=doc_model.organization,
+        filename=doc_model.filename,
+        url=doc_model.url,
+        uploaded_by=doc_model.uploader.email if doc_model.uploader else None,
+        grantee_id=doc_model.grantee_id, # Ensure this is populated
+        assigned_reviewer_id=doc_model.assigned_reviewer_id,
+        assigned_reviewer_email=doc_model.assigned_reviewer_obj.email if doc_model.assigned_reviewer_obj else None,
+        evaluations=eval_out_list
+    )
