@@ -21,6 +21,8 @@ from datetime import timedelta
 # However, with PYTHONPATH=backend, these should work as is.
 from backend import models, schemas, utils, auth, grantee, reviewer, admin
 from backend.database import engine, SessionLocal
+# Import the new mapping function
+from backend.schemas import map_document_model_to_out_schema
 
 # Create all database tables (if they don't exist)
 models.Base.metadata.create_all(bind=engine)
@@ -29,7 +31,7 @@ models.Base.metadata.create_all(bind=engine)
 app = FastAPI()
 
 # Include routers - These already handle the role-specific endpoints
-app.include_router(auth.router)
+# app.include_router(auth.router) # <--- REMOVED THIS LINE
 app.include_router(grantee.router)
 app.include_router(reviewer.router)
 app.include_router(admin.router)
@@ -163,7 +165,8 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     db_user = crud.get_user_by_email(db, email=user.email)
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
-    return crud.create_user(db=db, user=user)
+    # crud.create_user now returns models.User, convert to schemas.UserOut
+    return schemas.UserOut.from_orm(crud.create_user(db=db, user=user))
 
 # Login endpoint
 @app.post("/login", response_model=schemas.Token)
@@ -208,16 +211,12 @@ async def upload_document_route(
         organization=organization,
         filename=supabase_filename,
         url=supabase_url,
-        grantee_id=current_user.id # Use current_user.id for grantee_id
+        grantee_id=current_user.id
     )
-    db_document = crud.create_document(db=db, document=document_data)
+    db_document_model = crud.create_document(db=db, document=document_data)
+    # Map the returned model to the Pydantic schema for the response
+    return map_document_model_to_out_schema(db_document_model)
 
-    # Manually populate uploaded_by and assigned_reviewer_email for the response model
-    # as these are not directly stored in the Document model but are derived for output.
-    db_document.uploaded_by = current_user.email
-    db_document.assigned_reviewer_email = None # Initially no reviewer assigned
-
-    return db_document
 
 @app.get("/grantee/documents", response_model=List[schemas.DocumentOut])
 async def get_grantee_documents(
@@ -225,27 +224,10 @@ async def get_grantee_documents(
     db: Session = Depends(get_db)
 ):
     print(f"[GET DOCS] User: {current_user.id} ({current_user.email}), Role: {current_user.role}")
-    documents = crud.get_documents_by_grantee(db, grantee_id=current_user.id)
-    print(f"[GET DOCS] Found {len(documents)} documents for Grantee ID={current_user.id}")
-    # Populate derived fields for DocumentOut schema
-    for doc in documents:
-        doc.uploaded_by = doc.uploader.email if doc.uploader else None
-        doc.assigned_reviewer_email = doc.assigned_reviewer_obj.email if doc.assigned_reviewer_obj else None
-        evaluations_data = crud.get_evaluations_for_document(db, document_id=doc.id)
-        doc.evaluations = [
-            schemas.EvaluationOut(
-                id=eval.id,
-                comment=eval.comment,
-                status=eval.status,
-                reviewer_email=eval.reviewer.email if eval.reviewer else None,
-                created_at=eval.created_at
-            ) for eval in evaluations_data
-        ]
-        print(f" - Document ID={doc.id}, Title={doc.title}, Organization={doc.organization}, Filename={doc.filename}")
-        print(f"   Uploaded By: {doc.uploaded_by}, URL: {doc.url}")
-        for eval_data in doc.evaluations:
-            print(f"   - Eval ID={eval_data.id}, Reviewer Email={eval_data.reviewer_email}, Comment='{eval_data.comment}', Status={eval_data.status}")
-    return documents
+    documents_models = crud.get_documents_by_grantee(db, grantee_id=current_user.id)
+    print(f"[GET DOCS] Found {len(documents_models)} documents for Grantee ID={current_user.id}")
+    # Map the list of models to list of Pydantic schemas
+    return [map_document_model_to_out_schema(doc_model) for doc_model in documents_models]
 
 
 # Reviewer Endpoints
@@ -255,33 +237,16 @@ async def get_reviewer_documents(
     db: Session = Depends(get_db)
 ):
     print(f"[REVIEWER DOCS] User: {current_user.id} ({current_user.email}), Role: {current_user.role}")
-    documents = crud.get_documents_by_reviewer(db, reviewer_id=current_user.id)
-    print(f"[REVIEWER DOCS] Found {len(documents)} documents for Reviewer ID={current_user.id}")
-    # Populate derived fields for DocumentOut schema
-    for doc in documents:
-        doc.uploaded_by = doc.uploader.email if doc.uploader else None
-        doc.assigned_reviewer_email = doc.assigned_reviewer_obj.email if doc.assigned_reviewer_obj else None
-        evaluations_data = crud.get_evaluations_for_document(db, document_id=doc.id)
-        doc.evaluations = [
-            schemas.EvaluationOut(
-                id=eval.id,
-                comment=eval.comment,
-                status=eval.status,
-                reviewer_email=eval.reviewer.email if eval.reviewer else None,
-                created_at=eval.created_at
-            ) for eval in evaluations_data
-        ]
-        print(f" - Document ID={doc.id}, Title={doc.title}, Organization={doc.organization}, Filename={doc.filename}")
-        print(f"   Uploaded By: {doc.uploaded_by}, URL: {doc.url}")
-        for eval_data in doc.evaluations:
-            print(f"   - Eval ID={eval_data.id}, Reviewer Email={eval_data.reviewer_email}, Comment='{eval_data.comment}', Status={eval_data.status}")
-    return documents
+    documents_models = crud.get_documents_by_reviewer(db, reviewer_id=current_user.id)
+    print(f"[REVIEWER DOCS] Found {len(documents_models)} documents for Reviewer ID={current_user.id}")
+    # Map the list of models to list of Pydantic schemas
+    return [map_document_model_to_out_schema(doc_model) for doc_model in documents_models]
 
 
 @app.post("/reviewer/documents/{document_id}/evaluate", response_model=schemas.EvaluationOut)
 async def submit_document_evaluation(
     document_id: int,
-    evaluation: schemas.EvaluationCreate, # <--- CHANGED FROM schemas.DocumentEvaluationCreate
+    evaluation: schemas.EvaluationCreate,
     current_user: Annotated[models.User, Depends(get_current_reviewer_user)],
     db: Session = Depends(get_db)
 ):
@@ -292,13 +257,7 @@ async def submit_document_evaluation(
         comment=evaluation.comment,
         status=evaluation.status
     )
-    return schemas.EvaluationOut(
-        id=db_evaluation.id,
-        comment=db_evaluation.comment,
-        status=db_evaluation.status,
-        reviewer_email=current_user.email, # Set current reviewer's email
-        created_at=db_evaluation.created_at
-    )
+    return schemas.EvaluationOut.from_orm(db_evaluation)
 
 # Admin Endpoints
 @app.get("/admin/users", response_model=List[schemas.UserOut])
@@ -307,8 +266,9 @@ async def list_users(
     db: Session = Depends(get_db)
 ):
     print(f"[ADMIN] User: {current_user.id} ({current_user.email}), Role: {current_user.role} is listing all users.")
-    users = crud.get_all_users(db)
-    return [schemas.UserOut.from_orm(user) for user in users]
+    users_models = crud.get_all_users(db)
+    # Map the list of models to list of Pydantic schemas
+    return [schemas.UserOut.from_orm(user_model) for user_model in users_models]
 
 @app.get("/admin/documents", response_model=List[schemas.DocumentOut])
 async def list_documents(
@@ -316,22 +276,9 @@ async def list_documents(
     db: Session = Depends(get_db)
 ):
     print(f"[ADMIN] User: {current_user.id} ({current_user.email}), Role: {current_user.role} is listing all documents.")
-    documents = crud.get_all_documents(db)
-    # Populate derived fields for DocumentOut schema
-    for doc in documents:
-        doc.uploaded_by = doc.uploader.email if doc.uploader else None
-        doc.assigned_reviewer_email = doc.assigned_reviewer_obj.email if doc.assigned_reviewer_obj else None
-        evaluations_data = crud.get_evaluations_for_document(db, document_id=doc.id)
-        doc.evaluations = [
-            schemas.EvaluationOut(
-                id=eval.id,
-                comment=eval.comment,
-                status=eval.status,
-                reviewer_email=eval.reviewer.email if eval.reviewer else None,
-                created_at=eval.created_at
-            ) for eval in evaluations_data
-        ]
-    return documents
+    documents_models = crud.get_all_documents(db)
+    # Map the list of models to list of Pydantic schemas
+    return [map_document_model_to_out_schema(doc_model) for doc_model in documents_models]
 
 @app.post("/admin/documents/{document_id}/assign_reviewer", response_model=schemas.DocumentOut)
 async def assign_reviewer_to_document_route(
@@ -340,22 +287,9 @@ async def assign_reviewer_to_document_route(
     current_user: Annotated[models.User, Depends(get_current_admin_user)],
     db: Session = Depends(get_db)
 ):
-    db_document = crud.assign_reviewer_to_document(db, document_id, assign_data.reviewer_id)
-    if not db_document:
+    db_document_model = crud.assign_reviewer_to_document(db, document_id, assign_data.reviewer_id)
+    if not db_document_model:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Populate derived fields for the response
-    db_document.uploaded_by = db_document.uploader.email if db_document.uploader else None
-    db_document.assigned_reviewer_email = db_document.assigned_reviewer_obj.email if db_document.assigned_reviewer_obj else None
-    evaluations_data = crud.get_evaluations_for_document(db, document_id=db_document.id)
-    db_document.evaluations = [
-        schemas.EvaluationOut(
-            id=eval.id,
-            comment=eval.comment,
-            status=eval.status,
-            reviewer_email=eval.reviewer.email if eval.reviewer else None,
-            created_at=eval.created_at
-        ) for eval in evaluations_data
-    ]
-
-    return db_document
+    # Map the returned model to the Pydantic schema for the response
+    return map_document_model_to_out_schema(db_document_model)
