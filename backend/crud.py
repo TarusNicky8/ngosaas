@@ -1,181 +1,125 @@
-# crud.py
+# backend/crud.py
+
 from sqlalchemy.orm import Session, joinedload
-from passlib.context import CryptContext
-from datetime import datetime
-from typing import List, Optional # Import Optional for type hints
-from . import models, schemas # Assuming models.py defines the SQLAlchemy models
+from typing import List, Optional
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Assuming models.py defines the SQLAlchemy models and schemas.py defines Pydantic schemas
+from . import models, schemas
+# Import password hashing from auth.py, as main.py uses it
+from .auth import get_password_hash, verify_password # Ensure verify_password is also available here if needed for crud direct calls.
 
-# Password hashing
-def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+# --- User CRUD Operations ---
+def get_user(db: Session, user_id: int) -> Optional[models.User]:
+    """Get a user by their ID."""
+    return db.query(models.User).filter(models.User.id == user_id).first()
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+def get_user_by_email(db: Session, email: str) -> Optional[models.User]:
+    """Get a user by their email address."""
+    return db.query(models.User).filter(models.User.email == email).first()
 
-# Create user
-def create_user(db: Session, user: schemas.UserCreate):
-    hashed_password = get_password_hash(user.password)
+def get_all_users(db: Session, skip: int = 0, limit: int = 100) -> List[models.User]:
+    """Get all users with pagination."""
+    return db.query(models.User).offset(skip).limit(limit).all()
+
+def create_user(db: Session, user: schemas.UserCreate) -> models.User:
+    """Create a new user."""
+    hashed_password = get_password_hash(user.password) # Use hash function from auth.py
     db_user = models.User(
         email=user.email,
         hashed_password=hashed_password,
-        role=user.role
+        full_name=user.full_name, # Include full_name if available in UserCreate schema
+        role=user.role,
+        is_active=True # Default to active
     )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
     return db_user
 
-# Get user by email
-def get_user_by_email(db: Session, email: str):
-    return db.query(models.User).filter(models.User.email == email).first()
-
-# Authenticate user
-def authenticate_user(db: Session, email: str, password: str):
-    user = get_user_by_email(db, email)
-    if not user or not verify_password(password, user.hashed_password):
-        return None
-    return user
-
-# Create document
-def create_document(db: Session, title: str, organization: str, filename: str, grantee_id: int, user_email: str):
-    db_doc = models.Document(
-        title=title,
-        organization=organization,
-        filename=filename,
-        grantee_id=grantee_id,
-        user_email=user_email,
-        uploaded_by=user_email, # Set uploaded_by directly here
-        url=f"/uploads/{filename}" # Set url directly here
+# --- Document CRUD Operations ---
+def create_document(db: Session, document: schemas.DocumentCreate) -> models.Document:
+    """
+    Create a new document, storing its Supabase filename and URL.
+    """
+    db_document = models.Document(
+        title=document.title,
+        organization=document.organization,
+        filename=document.filename, # This is the unique filename in Supabase Storage
+        url=document.url,           # This is the public URL from Supabase
+        grantee_id=document.grantee_id,
+        # assigned_reviewer_id will be None initially unless explicitly provided
+        assigned_reviewer_id=document.assigned_reviewer_id
     )
-    db.add(db_doc)
+    db.add(db_document)
     db.commit()
-    db.refresh(db_doc)
-    return db_doc
+    db.refresh(db_document)
+    return db_document
 
-# Helper function to map a SQLAlchemy Document model to a Pydantic DocumentOut schema
-def _map_document_to_document_out(doc: models.Document) -> schemas.DocumentOut:
-    """Maps a SQLAlchemy Document object to a Pydantic DocumentOut schema."""
-    evaluations_out = []
-    for eval_item in doc.evaluations:
-        reviewer_email = eval_item.reviewer.email if eval_item.reviewer else "Unknown Reviewer"
-        evaluations_out.append(schemas.EvaluationOut(
-            id=eval_item.id,
-            comment=eval_item.comment,
-            status=eval_item.status,
-            reviewer_email=reviewer_email,
-            created_at=eval_item.created_at
-        ))
+def get_document(db: Session, document_id: int) -> Optional[models.Document]:
+    """Get a single document by its ID, eager loading related data."""
+    return db.query(models.Document).options(
+        joinedload(models.Document.evaluations).joinedload(models.Evaluation.reviewer), # Renamed to Evaluation
+        joinedload(models.Document.uploader), # New relationship name
+        joinedload(models.Document.assigned_reviewer_obj) # New relationship name
+    ).filter(models.Document.id == document_id).first()
 
-    assigned_reviewer_email = doc.assigned_reviewer.email if doc.assigned_reviewer else None
-
-    return schemas.DocumentOut(
-        id=doc.id,
-        title=doc.title,
-        organization=doc.organization,
-        filename=doc.filename,
-        user_email=doc.user_email,
-        grantee_id=doc.grantee_id,
-        uploaded_by=doc.uploaded_by,
-        url=doc.url,
-        assigned_reviewer_id=doc.assigned_reviewer_id, # Populate new field
-        assigned_reviewer_email=assigned_reviewer_email, # Populate new field
-        evaluations=evaluations_out
-    )
-
-# Get documents for grantee
-def get_documents_by_grantee(db: Session, grantee_id: int) -> List[schemas.DocumentOut]:
-    documents = db.query(models.Document).options(
-        joinedload(models.Document.evaluations).joinedload(models.DocumentEvaluation.reviewer),
-        joinedload(models.Document.assigned_reviewer) # Eager load the assigned reviewer
+def get_documents_by_grantee(db: Session, grantee_id: int) -> List[models.Document]:
+    """Get all documents uploaded by a specific grantee, eager loading related data."""
+    return db.query(models.Document).options(
+        joinedload(models.Document.evaluations).joinedload(models.Evaluation.reviewer), # Renamed to Evaluation
+        joinedload(models.Document.uploader), # New relationship name
+        joinedload(models.Document.assigned_reviewer_obj) # New relationship name
     ).filter(models.Document.grantee_id == grantee_id).all()
 
-    return [_map_document_to_document_out(doc) for doc in documents]
+def get_all_documents(db: Session, skip: int = 0, limit: int = 100) -> List[models.Document]:
+    """Get all documents, eager loading related data."""
+    return db.query(models.Document).options(
+        joinedload(models.Document.evaluations).joinedload(models.Evaluation.reviewer), # Renamed to Evaluation
+        joinedload(models.Document.uploader), # New relationship name
+        joinedload(models.Document.assigned_reviewer_obj) # New relationship name
+    ).offset(skip).limit(limit).all()
 
-# Get all documents (for reviewer/admin)
-def get_all_documents(db: Session) -> List[schemas.DocumentOut]:
-    documents = db.query(models.Document).options(
-        joinedload(models.Document.evaluations).joinedload(models.DocumentEvaluation.reviewer),
-        joinedload(models.Document.assigned_reviewer) # Eager load the assigned reviewer
-    ).all()
+def get_documents_by_reviewer(db: Session, reviewer_id: int) -> List[models.Document]:
+    """Get all documents assigned to a specific reviewer, eager loading related data."""
+    return db.query(models.Document).options(
+        joinedload(models.Document.evaluations).joinedload(models.Evaluation.reviewer), # Renamed to Evaluation
+        joinedload(models.Document.uploader), # New relationship name
+        joinedload(models.Document.assigned_reviewer_obj) # New relationship name
+    ).filter(models.Document.assigned_reviewer_id == reviewer_id).all()
 
-    return [_map_document_to_document_out(doc) for doc in documents]
 
-# Get document by ID
-def get_document_by_id(db: Session, document_id: int) -> Optional[schemas.DocumentOut]:
-    document = db.query(models.Document).options(
-        joinedload(models.Document.evaluations).joinedload(models.DocumentEvaluation.reviewer),
-        joinedload(models.Document.assigned_reviewer) # Eager load the assigned reviewer
-    ).filter(models.Document.id == document_id).first()
-
-    if document:
-        return _map_document_to_document_out(document)
+def assign_reviewer_to_document(db: Session, document_id: int, reviewer_id: int) -> Optional[models.Document]:
+    """Assigns a reviewer to a specific document."""
+    db_document = db.query(models.Document).filter(models.Document.id == document_id).first()
+    if db_document:
+        db_document.assigned_reviewer_id = reviewer_id
+        db.add(db_document)
+        db.commit()
+        db.refresh(db_document)
+        # Re-query with eager loading to ensure relationships are fresh for the returned object
+        return get_document(db, document_id)
     return None
 
-# Create evaluation
-def create_evaluation(db: Session, document_id: int, reviewer_id: int, evaluation: schemas.EvaluationCreate):
-    db_eval = models.DocumentEvaluation(
+# --- Evaluation CRUD Operations ---
+def create_evaluation(db: Session, document_id: int, reviewer_id: int, comment: str, status: str) -> models.Evaluation:
+    """Create a new evaluation for a document."""
+    db_evaluation = models.Evaluation( # Renamed from DocumentEvaluation
         document_id=document_id,
         reviewer_id=reviewer_id,
-        comment=evaluation.comment,
-        status=evaluation.status,
-        created_at=datetime.utcnow()
+        comment=comment,
+        status=status,
     )
-    db.add(db_eval)
+    db.add(db_evaluation)
     db.commit()
-    db.refresh(db_eval)
-    return db_eval
+    db.refresh(db_evaluation)
+    return db_evaluation
 
-# Get evaluations for a document
-def get_evaluations_for_document(db: Session, document_id: int) -> List[schemas.EvaluationOut]:
-    evaluations = db.query(models.DocumentEvaluation).options(
-        joinedload(models.DocumentEvaluation.reviewer)
-    ).filter(models.DocumentEvaluation.document_id == document_id).all()
+def get_evaluation(db: Session, evaluation_id: int) -> Optional[models.Evaluation]:
+    """Get a single evaluation by its ID."""
+    return db.query(models.Evaluation).filter(models.Evaluation.id == evaluation_id).first()
 
-    return [
-        schemas.EvaluationOut(
-            id=eval.id,
-            comment=eval.comment,
-            status=eval.status,
-            reviewer_email=eval.reviewer.email if eval.reviewer else "Unknown Reviewer",
-            created_at=eval.created_at
-        ) for eval in evaluations
-    ]
-
-# Get all users (admin)
-def get_all_users(db: Session) -> List[schemas.UserOut]:
-    # Eager load any relationships needed for UserOut if applicable (e.g., documents, evaluations)
-    # For now, just fetching users directly is fine if UserOut only uses direct columns.
-    users = db.query(models.User).all()
-    return [schemas.UserOut.from_orm(user) for user in users]
-
-# --- NEW FUNCTION FOR ADMIN FUNCTIONALITY ---
-def assign_reviewer_to_document(db: Session, document_id: int, reviewer_id: int) -> Optional[schemas.DocumentOut]:
-    """Assigns a reviewer to a specific document."""
-    document = db.query(models.Document).filter(models.Document.id == document_id).first()
-    if not document:
-        return None
-
-    # Check if the reviewer_id exists and has the 'reviewer' role (optional but good practice)
-    reviewer = db.query(models.User).filter(models.User.id == reviewer_id).first()
-    if not reviewer or reviewer.role != "reviewer":
-        # You might raise an HTTPException here in the API route instead
-        print(f"Error: Reviewer with ID {reviewer_id} not found or is not a reviewer.")
-        return None
-
-    document.assigned_reviewer_id = reviewer_id
-    db.add(document)
-    db.commit()
-    db.refresh(document) # Refresh to get the updated assigned_reviewer relationship loaded
-
-    # Now, explicitly load the assigned_reviewer relationship for the refreshed document
-    # so that assigned_reviewer_email can be populated correctly.
-    document = db.query(models.Document).options(
-        joinedload(models.Document.evaluations).joinedload(models.DocumentEvaluation.reviewer),
-        joinedload(models.Document.assigned_reviewer)
-    ).filter(models.Document.id == document_id).first()
-
-    if document:
-        return _map_document_to_document_out(document)
-    return None # Should not happen if document was found initially
+def get_evaluations_for_document(db: Session, document_id: int) -> List[models.Evaluation]:
+    """Get all evaluations for a specific document, eager loading the reviewer."""
+    return db.query(models.Evaluation).options(
+        joinedload(models.Evaluation.reviewer) # Renamed to Evaluation
+    ).filter(models.Evaluation.document_id == document_id).all()
