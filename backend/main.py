@@ -21,6 +21,7 @@ from datetime import timedelta
 # However, with PYTHONPATH=backend, these should work as is.
 from backend import models, schemas, utils, auth, grantee, reviewer, admin
 from backend.database import engine, SessionLocal
+from backend import crud # <--- ADDED THIS LINE
 # Import the new mapping function
 from backend.schemas import map_document_model_to_out_schema
 
