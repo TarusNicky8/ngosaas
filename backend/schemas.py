@@ -44,7 +44,7 @@ class EvaluationOut(BaseModel):
     }
 
 class UserOut(BaseModel):
-    id: int
+    id: str # Changed from int to str to match UUID type
     email: EmailStr
     full_name: Optional[str] = None
     role: str
@@ -60,8 +60,8 @@ class DocumentOut(BaseModel):
     filename: str
     url: str
     uploaded_by: Optional[str] = None
-    grantee_id: Optional[int] = None # Added grantee_id to DocumentOut for checks in routers
-    assigned_reviewer_id: Optional[int] = None
+    grantee_id: Optional[str] = None # Changed from int to str to match UUID type
+    assigned_reviewer_id: Optional[str] = None # Changed from int to str to match UUID type
     assigned_reviewer_email: Optional[str] = None
 
     evaluations: List[EvaluationOut] = Field(default_factory=list)
@@ -73,7 +73,7 @@ class DocumentOut(BaseModel):
 # Removed DocumentEvaluationOut as it was redundant with EvaluationOut
 
 class AssignReviewer(BaseModel):
-    reviewer_id: int
+    reviewer_id: str # Changed from int to str to match UUID type
 
 # --- NEW HELPER FUNCTION FOR MAPPING MODELS TO SCHEMAS ---
 def map_document_model_to_out_schema(doc_model: "models.Document") -> DocumentOut:
@@ -81,7 +81,7 @@ def map_document_model_to_out_schema(doc_model: "models.Document") -> DocumentOu
     Maps a SQLAlchemy Document model object to a Pydantic DocumentOut schema.
     Handles loading related evaluations and populating derived fields.
     """
-    evalu_out_list = []
+    eval_out_list = []
     if doc_model.evaluations:
         for eval_item in doc_model.evaluations:
             eval_out_list.append(EvaluationOut(
@@ -99,8 +99,8 @@ def map_document_model_to_out_schema(doc_model: "models.Document") -> DocumentOu
         filename=doc_model.filename,
         url=doc_model.url,
         uploaded_by=doc_model.uploader.email if doc_model.uploader else None,
-        grantee_id=doc_model.grantee_id, # Ensure this is populated
-        assigned_reviewer_id=doc_model.assigned_reviewer_id,
+        grantee_id=str(doc_model.grantee_id) if doc_model.grantee_id else None, # Convert UUID to string
+        assigned_reviewer_id=str(doc_model.assigned_reviewer_id) if doc_model.assigned_reviewer_id else None, # Convert UUID to string
         assigned_reviewer_email=doc_model.assigned_reviewer_obj.email if doc_model.assigned_reviewer_obj else None,
         evaluations=eval_out_list
     )
