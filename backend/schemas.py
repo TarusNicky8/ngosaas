@@ -2,6 +2,7 @@
 from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field
 from typing import List, Optional
+import uuid # ADDED: Import uuid for type hinting if needed, though 'str' is used for API boundary
 
 # Import models for type hinting in the mapping function
 from backend import models # Assuming backend is the package root
@@ -29,8 +30,8 @@ class DocumentCreate(BaseModel):
     organization: str
     filename: str
     url: str
-    grantee_id: int
-    assigned_reviewer_id: Optional[int] = None
+    grantee_id: str # CRUCIAL FIX: Changed from int to str to match UUID
+    assigned_reviewer_id: Optional[str] = None # CRUCIAL FIX: Changed from Optional[int] to Optional[str]
 
 class EvaluationOut(BaseModel):
     id: int
@@ -44,7 +45,7 @@ class EvaluationOut(BaseModel):
     }
 
 class UserOut(BaseModel):
-    id: str # Changed from int to str to match UUID type
+    id: str # Already correct
     email: EmailStr
     full_name: Optional[str] = None
     role: str
@@ -60,8 +61,8 @@ class DocumentOut(BaseModel):
     filename: str
     url: str
     uploaded_by: Optional[str] = None
-    grantee_id: Optional[str] = None # Changed from int to str to match UUID type
-    assigned_reviewer_id: Optional[str] = None # Changed from int to str to match UUID type
+    grantee_id: Optional[str] = None # Already correct
+    assigned_reviewer_id: Optional[str] = None # Already correct
     assigned_reviewer_email: Optional[str] = None
 
     evaluations: List[EvaluationOut] = Field(default_factory=list)
@@ -70,12 +71,10 @@ class DocumentOut(BaseModel):
         "from_attributes": True
     }
 
-# Removed DocumentEvaluationOut as it was redundant with EvaluationOut
-
 class AssignReviewer(BaseModel):
-    reviewer_id: str # Changed from int to str to match UUID type
+    reviewer_id: str # Already correct
 
-# --- NEW HELPER FUNCTION FOR MAPPING MODELS TO SCHEMAS ---
+# --- HELPER FUNCTION FOR MAPPING MODELS TO SCHEMAS ---
 def map_document_model_to_out_schema(doc_model: "models.Document") -> DocumentOut:
     """
     Maps a SQLAlchemy Document model object to a Pydantic DocumentOut schema.
@@ -99,8 +98,8 @@ def map_document_model_to_out_schema(doc_model: "models.Document") -> DocumentOu
         filename=doc_model.filename,
         url=doc_model.url,
         uploaded_by=doc_model.uploader.email if doc_model.uploader else None,
-        grantee_id=str(doc_model.grantee_id) if doc_model.grantee_id else None, # Convert UUID to string
-        assigned_reviewer_id=str(doc_model.assigned_reviewer_id) if doc_model.assigned_reviewer_id else None, # Convert UUID to string
+        grantee_id=str(doc_model.grantee_id) if doc_model.grantee_id else None,
+        assigned_reviewer_id=str(doc_model.assigned_reviewer_id) if doc_model.assigned_reviewer_id else None,
         assigned_reviewer_email=doc_model.assigned_reviewer_obj.email if doc_model.assigned_reviewer_obj else None,
         evaluations=eval_out_list
     )
