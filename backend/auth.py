@@ -6,7 +6,7 @@ from typing import Optional, Annotated
 from jose import jwt, JWTError
 from fastapi import HTTPException, status, Depends
 from fastapi.security import OAuth2PasswordBearer
-import uuid # ADDED: Required for UUID to string conversion in JWT payload
+import uuid # Required for UUID to string conversion in JWT payload
 
 from sqlalchemy.orm import Session # For type hinting database session
 
@@ -15,7 +15,7 @@ from backend import models, schemas
 # Import specific functions from crud and utils
 from backend.crud import get_user_by_email # Used for retrieving user by email
 from backend.utils import get_password_hash, verify_password # Used for password hashing/verification
-from backend.dependencies import get_db # ADDED: Import the get_db dependency
+from backend.dependencies import get_db # Import the get_db dependency
 
 # OAuth2 scheme for token authentication
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login") # This URL must match your actual login endpoint path
@@ -37,7 +37,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
         expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
 
-    # CRUCIAL FIX: Convert UUID to string before encoding into JWT payload
+    # Crucial: Convert UUID to string before encoding into JWT payload
     # This resolves TypeError: Object of type UUID is not JSON serializable
     if "id" in to_encode and isinstance(to_encode["id"], uuid.UUID):
         to_encode["id"] = str(to_encode["id"])
@@ -70,19 +70,22 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     try:
         # The jwt.decode function expects a string token and a string key
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        print(f"[DEBUG AUTH] JWT Payload: {payload}") # DEBUG PRINT
         email: str = payload.get("sub")
         if email is None:
             raise credentials_exception
         user = get_user_by_email(db, email) # Retrieve user from database
         if user is None:
             raise credentials_exception
+        print(f"[DEBUG AUTH] User retrieved from DB in get_current_user: {user.email}, Role: {user.role}, ID: {user.id}") # DEBUG PRINT
         return user
     except JWTError:
         # Catch JWT specific errors (e.g., invalid token, expired token)
+        print(f"[DEBUG AUTH] JWTError during token decoding.") # DEBUG PRINT
         raise credentials_exception
     except Exception as e:
         # Catch any other unexpected errors during token processing
-        print(f"Error during get_current_user: {e}")
+        print(f"[DEBUG AUTH] Unexpected error during get_current_user: {e}") # DEBUG PRINT
         raise credentials_exception
 
 async def get_current_active_user(current_user: Annotated[models.User, Depends(get_current_user)]):
@@ -99,6 +102,7 @@ async def get_current_admin_user(current_user: Annotated[models.User, Depends(ge
     """
     Ensures the current active user has the 'admin' role.
     """
+    print(f"[DEBUG AUTH] Checking admin role for user: {current_user.email}, Role: {current_user.role}") # DEBUG PRINT
     if current_user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -110,6 +114,7 @@ async def get_current_reviewer_user(current_user: Annotated[models.User, Depends
     """
     Ensures the current active user has the 'reviewer' role.
     """
+    print(f"[DEBUG AUTH] Checking reviewer role for user: {current_user.email}, Role: {current_user.role}") # DEBUG PRINT
     if current_user.role != "reviewer":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -121,6 +126,7 @@ async def get_current_grantee_user(current_user: Annotated[models.User, Depends(
     """
     Ensures the current active user has the 'grantee' role.
     """
+    print(f"[DEBUG AUTH] Checking grantee role for user: {current_user.email}, Role: {current_user.role}") # DEBUG PRINT
     if current_user.role != "grantee":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
