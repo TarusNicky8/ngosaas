@@ -1,6 +1,6 @@
 # backend/schemas.py
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, validator # ADDED: validator
 from typing import List, Optional
 import uuid # Import uuid for potential type hinting, though 'str' is used for API boundary
 
@@ -30,8 +30,8 @@ class DocumentCreate(BaseModel):
     organization: str
     filename: str
     url: str
-    grantee_id: str # CORRECTED: Changed from int to str for UUID compatibility from frontend
-    assigned_reviewer_id: Optional[str] = None # CORRECTED: Changed from Optional[int] to Optional[str]
+    grantee_id: str # Corrected from int to str for UUID compatibility from frontend
+    assigned_reviewer_id: Optional[str] = None # Corrected from Optional[int] to Optional[str]
 
 class EvaluationOut(BaseModel):
     id: int
@@ -40,16 +40,22 @@ class EvaluationOut(BaseModel):
     reviewer_email: Optional[str] = None
     created_at: datetime
 
-    class Config: # ADDED: Pydantic v1 Config for ORM mode
+    class Config: # Pydantic v1 Config for ORM mode
         orm_mode = True
 
 class UserOut(BaseModel):
-    id: str # Already correct for UUID string representation
+    id: str # Expects string
     email: EmailStr
     full_name: Optional[str] = None
     role: str
 
-    class Config: # ADDED: Pydantic v1 Config for ORM mode
+    @validator('id', pre=True, always=True) # ADDED: Validator to ensure UUID is string
+    def convert_id_to_str(cls, v):
+        if isinstance(v, uuid.UUID):
+            return str(v)
+        return v
+
+    class Config: # Pydantic v1 Config for ORM mode
         orm_mode = True
 
 class DocumentOut(BaseModel):
@@ -59,17 +65,17 @@ class DocumentOut(BaseModel):
     filename: str
     url: str
     uploaded_by: Optional[str] = None
-    grantee_id: Optional[str] = None # Already correct for UUID string representation
-    assigned_reviewer_id: Optional[str] = None # Already correct for UUID string representation
+    grantee_id: Optional[str] = None # Corrected for UUID string representation
+    assigned_reviewer_id: Optional[str] = None # Corrected for UUID string representation
     assigned_reviewer_email: Optional[str] = None
 
     evaluations: List[EvaluationOut] = Field(default_factory=list)
 
-    class Config: # ADDED: Pydantic v1 Config for ORM mode
+    class Config: # Pydantic v1 Config for ORM mode
         orm_mode = True
 
 class AssignReviewer(BaseModel):
-    reviewer_id: str # Already correct for UUID string representation
+    reviewer_id: str # Corrected for UUID string representation
 
 # --- HELPER FUNCTION FOR MAPPING MODELS TO SCHEMAS ---
 def map_document_model_to_out_schema(doc_model: "models.Document") -> DocumentOut:
@@ -89,7 +95,7 @@ def map_document_model_to_out_schema(doc_model: "models.Document") -> DocumentOu
             ))
 
     return DocumentOut(
-        id=doc_model.id,
+        id=doc_model.id, # id for DocumentOut is int, which should be fine if DB side is SERIAL
         title=doc_model.title,
         organization=doc_model.organization,
         filename=doc_model.filename,
