@@ -183,8 +183,9 @@ def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
     access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
+    # Convert user.id to string before including in JWT payload
     access_token = auth.create_access_token(
-        data={"sub": user.email, "id": user.id, "role": user.role}, expires_delta=access_token_expires
+        data={"sub": user.email, "id": str(user.id), "role": user.role}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
@@ -261,7 +262,7 @@ async def submit_document_evaluation(
     return schemas.EvaluationOut.from_orm(db_evaluation)
 
 # Admin Endpoints
-@app.get("/admin/users", response_model=List[schemas.UserOut])
+@app.get("/admin/users", response_model=List[schemas.UserOut], operation_id="list_all_users_admin") # Added unique operation_id
 async def list_users(
     current_user: Annotated[models.User, Depends(get_current_admin_user)],
     db: Session = Depends(get_db)
