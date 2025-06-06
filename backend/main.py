@@ -82,7 +82,7 @@ async def upload_file_to_supabase(file: UploadFile):
             file_options={"content-type": file.content_type}
         )
 
-        # CORRECTED: Check for success using 'path' attribute of the UploadResponse object
+        # Corrected: Check for success using 'path' attribute of the UploadResponse object
         if upload_result and getattr(upload_result, 'path', None): # Safely check if path attribute exists
             public_url = f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_STORAGE_BUCKET}/{supabase_filename}"
             print(f"[DEBUG UPLOAD] File uploaded to: {public_url}") # Debug print
@@ -155,7 +155,7 @@ async def upload_document_route(
         organization=organization,
         filename=supabase_filename,
         url=supabase_url,
-        grantee_id=current_user.id
+        grantee_id=str(current_user.id) # CRUCIAL FIX: Convert current_user.id to string here
     )
     db_document_model = crud.create_document(db=db, document=document_data)
     return map_document_model_to_out_schema(db_document_model)
