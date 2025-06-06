@@ -1,16 +1,20 @@
+# backend/models.py
+
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from sqlalchemy.dialects.postgresql import UUID # NEW: Import UUID
-import uuid # NEW: Import uuid for default generation if needed, though sa.text('gen_random_uuid()') is also good
+from sqlalchemy.dialects.postgresql import UUID # Import UUID for PostgreSQL UUID type
+import uuid # Import uuid for default generation if needed, though sa.text('gen_random_uuid()') is also good
 
 from .database import Base
 
 class User(Base):
     __tablename__ = "users"
 
-    # Changed to UUID for compatibility with Supabase auth.uid()
-    id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
+    # Changed to UUID for compatibility with Supabase auth.uid() and PostgreSQL UUID type
+    id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4) # Using Python's uuid.uuid4 for client-side generation
+    # Alternatively, for database-side generation, you could use:
+    # id = Column(UUID(as_uuid=True), primary_key=True, server_default=sa.text('gen_random_uuid()'))
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     full_name = Column(String, nullable=True)
@@ -27,7 +31,7 @@ class User(Base):
 class Document(Base):
     __tablename__ = "documents"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True) # Document ID can remain integer if needed
     title = Column(String, index=True, nullable=False)
     organization = Column(String, nullable=False)
     filename = Column(String, nullable=False)
@@ -47,7 +51,7 @@ class Document(Base):
 class Evaluation(Base):
     __tablename__ = "evaluations"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True) # Evaluation ID can remain integer
     document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
     # Changed ForeignKey to UUID to match User.id
     reviewer_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)

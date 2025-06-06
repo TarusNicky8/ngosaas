@@ -2,7 +2,7 @@
 
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
-import uuid # ADDED: Import uuid
+import uuid # ADDED: Import uuid for explicit UUID type handling
 
 # Assuming models.py defines the SQLAlchemy models and schemas.py defines Pydantic schemas
 from . import models, schemas
@@ -10,7 +10,7 @@ from . import models, schemas
 from backend.utils import get_password_hash, verify_password
 
 # --- User CRUD Operations ---
-def get_user(db: Session, user_id: uuid.UUID) -> Optional[models.User]: # UPDATED: user_id type to uuid.UUID
+def get_user(db: Session, user_id: uuid.UUID) -> Optional[models.User]: # CORRECTED: user_id type to uuid.UUID
     """Get a user by their ID."""
     return db.query(models.User).filter(models.User.id == user_id).first()
 
@@ -28,7 +28,7 @@ def create_user(db: Session, user: schemas.UserCreate) -> models.User:
     db_user = models.User(
         email=user.email,
         hashed_password=hashed_password,
-        full_name=user.full_name, # Include full_name if available in UserCreate schema
+        full_name=user.full_name,
         role=user.role,
         is_active=True # Default to active
     )
@@ -43,9 +43,11 @@ def create_document(db: Session, document: schemas.DocumentCreate) -> models.Doc
     Create a new document, storing its Supabase filename and URL.
     Handles converting string UUIDs from schema to uuid.UUID objects for model.
     """
-    # CRUCIAL FIX: Convert grantee_id and assigned_reviewer_id from string to uuid.UUID
-    # before creating the model instance.
+    # CRUCIAL FIX: Convert grantee_id from string to uuid.UUID object
+    # This addresses the 'cannot cast type numeric to uuid' during insertion.
     grantee_uuid = uuid.UUID(document.grantee_id)
+    
+    # Convert assigned_reviewer_id from string to uuid.UUID object if it exists
     assigned_reviewer_uuid = uuid.UUID(document.assigned_reviewer_id) if document.assigned_reviewer_id else None
 
     db_document = models.Document(
@@ -69,13 +71,13 @@ def get_document(db: Session, document_id: int) -> Optional[models.Document]:
         joinedload(models.Document.assigned_reviewer_obj)
     ).filter(models.Document.id == document_id).first()
 
-def get_documents_by_grantee(db: Session, grantee_id: uuid.UUID) -> List[models.Document]: # UPDATED: grantee_id type to uuid.UUID
+def get_documents_by_grantee(db: Session, grantee_id: uuid.UUID) -> List[models.Document]: # CORRECTED: grantee_id type to uuid.UUID
     """Get all documents uploaded by a specific grantee, eager loading related data."""
     return db.query(models.Document).options(
         joinedload(models.Document.evaluations).joinedload(models.Evaluation.reviewer),
         joinedload(models.Document.uploader),
         joinedload(models.Document.assigned_reviewer_obj)
-    ).filter(models.Document.grantee_id == grantee_id).all() # Comparison is now UUID == UUID
+    ).filter(models.Document.grantee_id == grantee_id).all()
 
 def get_all_documents(db: Session, skip: int = 0, limit: int = 100) -> List[models.Document]:
     """Get all documents, eager loading related data."""
@@ -85,7 +87,7 @@ def get_all_documents(db: Session, skip: int = 0, limit: int = 100) -> List[mode
         joinedload(models.Document.assigned_reviewer_obj)
     ).offset(skip).limit(limit).all()
 
-def get_documents_by_reviewer(db: Session, reviewer_id: uuid.UUID) -> List[models.Document]: # UPDATED: reviewer_id type to uuid.UUID
+def get_documents_by_reviewer(db: Session, reviewer_id: uuid.UUID) -> List[models.Document]: # CORRECTED: reviewer_id type to uuid.UUID
     """Get all documents assigned to a specific reviewer, eager loading related data."""
     return db.query(models.Document).options(
         joinedload(models.Document.evaluations).joinedload(models.Evaluation.reviewer),
@@ -94,11 +96,11 @@ def get_documents_by_reviewer(db: Session, reviewer_id: uuid.UUID) -> List[model
     ).filter(models.Document.assigned_reviewer_id == reviewer_id).all()
 
 
-def assign_reviewer_to_document(db: Session, document_id: int, reviewer_id: str) -> Optional[models.Document]: # UPDATED: reviewer_id type to str
+def assign_reviewer_to_document(db: Session, document_id: int, reviewer_id: str) -> Optional[models.Document]: # reviewer_id comes as str from schema
     """Assigns a reviewer to a specific document."""
     db_document = db.query(models.Document).filter(models.Document.id == document_id).first()
     if db_document:
-        # CRUCIAL FIX: Convert reviewer_id from string to uuid.UUID
+        # CRUCIAL FIX: Convert reviewer_id from string to uuid.UUID object
         db_document.assigned_reviewer_id = uuid.UUID(reviewer_id)
         db.add(db_document)
         db.commit()
@@ -108,11 +110,11 @@ def assign_reviewer_to_document(db: Session, document_id: int, reviewer_id: str)
     return None
 
 # --- Evaluation CRUD Operations ---
-def create_evaluation(db: Session, document_id: int, reviewer_id: uuid.UUID, comment: str, status: str) -> models.Evaluation: # UPDATED: reviewer_id type to uuid.UUID
+def create_evaluation(db: Session, document_id: int, reviewer_id: uuid.UUID, comment: str, status: str) -> models.Evaluation: # CORRECTED: reviewer_id type to uuid.UUID
     """Create a new evaluation for a document."""
     db_evaluation = models.Evaluation(
         document_id=document_id,
-        reviewer_id=reviewer_id, # This should already be a uuid.UUID from the calling context if the dependency is correctly set up
+        reviewer_id=reviewer_id, # This should now be a uuid.UUID object
         comment=comment,
         status=status,
     )

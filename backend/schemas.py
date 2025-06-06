@@ -2,7 +2,7 @@
 from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field
 from typing import List, Optional
-import uuid # ADDED: Import uuid for type hinting if needed, though 'str' is used for API boundary
+import uuid # Import uuid for potential type hinting, though 'str' is used for API boundary
 
 # Import models for type hinting in the mapping function
 from backend import models # Assuming backend is the package root
@@ -30,8 +30,8 @@ class DocumentCreate(BaseModel):
     organization: str
     filename: str
     url: str
-    grantee_id: str # CRUCIAL FIX: Changed from int to str to match UUID
-    assigned_reviewer_id: Optional[str] = None # CRUCIAL FIX: Changed from Optional[int] to Optional[str]
+    grantee_id: str # CORRECTED: Changed from int to str for UUID compatibility from frontend
+    assigned_reviewer_id: Optional[str] = None # CORRECTED: Changed from Optional[int] to Optional[str]
 
 class EvaluationOut(BaseModel):
     id: int
@@ -40,19 +40,17 @@ class EvaluationOut(BaseModel):
     reviewer_email: Optional[str] = None
     created_at: datetime
 
-    model_config = {
-        "from_attributes": True
-    }
+    class Config: # ADDED: Pydantic v1 Config for ORM mode
+        orm_mode = True
 
 class UserOut(BaseModel):
-    id: str # Already correct
+    id: str # Already correct for UUID string representation
     email: EmailStr
     full_name: Optional[str] = None
     role: str
 
-    model_config = {
-        "from_attributes": True
-    }
+    class Config: # ADDED: Pydantic v1 Config for ORM mode
+        orm_mode = True
 
 class DocumentOut(BaseModel):
     id: int
@@ -61,18 +59,17 @@ class DocumentOut(BaseModel):
     filename: str
     url: str
     uploaded_by: Optional[str] = None
-    grantee_id: Optional[str] = None # Already correct
-    assigned_reviewer_id: Optional[str] = None # Already correct
+    grantee_id: Optional[str] = None # Already correct for UUID string representation
+    assigned_reviewer_id: Optional[str] = None # Already correct for UUID string representation
     assigned_reviewer_email: Optional[str] = None
 
     evaluations: List[EvaluationOut] = Field(default_factory=list)
 
-    model_config = {
-        "from_attributes": True
-    }
+    class Config: # ADDED: Pydantic v1 Config for ORM mode
+        orm_mode = True
 
 class AssignReviewer(BaseModel):
-    reviewer_id: str # Already correct
+    reviewer_id: str # Already correct for UUID string representation
 
 # --- HELPER FUNCTION FOR MAPPING MODELS TO SCHEMAS ---
 def map_document_model_to_out_schema(doc_model: "models.Document") -> DocumentOut:
@@ -98,8 +95,8 @@ def map_document_model_to_out_schema(doc_model: "models.Document") -> DocumentOu
         filename=doc_model.filename,
         url=doc_model.url,
         uploaded_by=doc_model.uploader.email if doc_model.uploader else None,
-        grantee_id=str(doc_model.grantee_id) if doc_model.grantee_id else None,
-        assigned_reviewer_id=str(doc_model.assigned_reviewer_id) if doc_model.assigned_reviewer_id else None,
+        grantee_id=str(doc_model.grantee_id) if doc_model.grantee_id else None, # Ensure this is string conversion
+        assigned_reviewer_id=str(doc_model.assigned_reviewer_id) if doc_model.assigned_reviewer_id else None, # Ensure this is string conversion
         assigned_reviewer_email=doc_model.assigned_reviewer_obj.email if doc_model.assigned_reviewer_obj else None,
         evaluations=eval_out_list
     )
