@@ -18,10 +18,10 @@ from backend import models, schemas, utils, crud
 from backend.database import engine # Only engine is needed for metadata.create_all
 
 # Import dependencies from the dedicated dependencies module
-from backend.dependencies import get_db # CORRECTED: Import get_db from backend.dependencies
+from backend.dependencies import get_db
 
 # Import all authentication and user dependency functions from the auth module
-from backend.auth import ( # CORRECTED: Import directly from backend.auth
+from backend.auth import (
     SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES,
     authenticate_user, create_access_token, # Used directly in login
     get_current_user, get_current_active_user, # Core user dependencies
@@ -66,7 +66,7 @@ if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY:
 else:
     print("Supabase credentials not found in environment variables. Supabase operations will be disabled.")
 
-# Helper function to upload file to Supabase Storage (remains in main.py)
+# Helper function to upload file to Supabase Storage
 async def upload_file_to_supabase(file: UploadFile):
     if not supabase_client:
         raise HTTPException(status_code=500, detail="Supabase client not configured.")
@@ -75,18 +75,22 @@ async def upload_file_to_supabase(file: UploadFile):
     supabase_filename = f"{uuid4()}{file_extension}" # Use uuid4 from 'uuid' module
 
     try:
-        response = supabase_client.storage.from_(SUPABASE_STORAGE_BUCKET).upload(
+        # Perform the upload; this returns an UploadResponse object (dataclass)
+        upload_result = supabase_client.storage.from_(SUPABASE_STORAGE_BUCKET).upload(
             file=await file.read(),
             path=supabase_filename,
             file_options={"content-type": file.content_type}
         )
 
-        if response and "Key" in response:
+        # CORRECTED: Check for success using 'path' attribute of the UploadResponse object
+        if upload_result and getattr(upload_result, 'path', None): # Safely check if path attribute exists
             public_url = f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_STORAGE_BUCKET}/{supabase_filename}"
+            print(f"[DEBUG UPLOAD] File uploaded to: {public_url}") # Debug print
             return public_url, supabase_filename
         else:
-            print(f"Supabase upload error: {response}")
-            raise HTTPException(status_code=500, detail=f"Failed to upload file to Supabase Storage: {response}")
+            # If upload_result doesn't have a path, it likely failed or the response was unexpected
+            print(f"Supabase upload error: Upload result missing path: {upload_result}")
+            raise HTTPException(status_code=500, detail=f"Failed to upload file to Supabase Storage: Invalid upload response.")
     except Exception as e:
         print(f"An unexpected error occurred during Supabase upload: {e}")
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred during Supabase upload: {e}")
