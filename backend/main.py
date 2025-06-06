@@ -155,7 +155,7 @@ async def upload_document_route(
         organization=organization,
         filename=supabase_filename,
         url=supabase_url,
-        grantee_id=str(current_user.id) # CRUCIAL FIX: Convert current_user.id to string here
+        grantee_id=str(current_user.id) # Convert current_user.id to string here
     )
     db_document_model = crud.create_document(db=db, document=document_data)
     return map_document_model_to_out_schema(db_document_model)
@@ -226,10 +226,19 @@ async def assign_reviewer_to_document_route(
     current_user: Annotated[models.User, Depends(get_current_admin_user)],
     db: Session = Depends(get_db)
 ):
+    print(f"[DEBUG MAIN] Received assignment request for document ID: {document_id}, reviewer ID: {assign_data.reviewer_id}") # ADDED DEBUG
     db_document_model = crud.assign_reviewer_to_document(db, document_id, assign_data.reviewer_id)
+    
     if not db_document_model:
+        print(f"[DEBUG MAIN] crud.assign_reviewer_to_document returned None for document ID: {document_id}") # ADDED DEBUG
+        # Attempt to get the document again to confirm if it exists at all
         existing_document_model = crud.get_document(db, document_id)
         if not existing_document_model:
+            print(f"[DEBUG MAIN] Document {document_id} truly not found in DB.") # ADDED DEBUG
             raise HTTPException(status_code=404, detail="Document not found")
-        raise HTTPException(status_code=400, detail="Failed to assign reviewer. Reviewer might not exist or not have 'reviewer' role.")
+        else:
+            print(f"[DEBUG MAIN] Document {document_id} EXISTS, but assignment failed (reviewer likely invalid).") # ADDED DEBUG
+            raise HTTPException(status_code=400, detail="Failed to assign reviewer. Reviewer might not exist or not have 'reviewer' role.")
+    
+    print(f"[DEBUG MAIN] Document {document_id} successfully assigned reviewer.") # ADDED DEBUG
     return map_document_model_to_out_schema(db_document_model)
