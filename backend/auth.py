@@ -2,30 +2,33 @@
 
 import os
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Annotated
 from jose import jwt, JWTError
 from fastapi import HTTPException, status, Depends
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session # Import Session for type hinting in authenticate_user
+from fastapi.security import OAuth2PasswordBearer
+import uuid # ADDED: Required for UUID to string conversion in JWT payload
+
+from sqlalchemy.orm import Session # For type hinting database session
 
 # Import necessary modules from your backend package
 from backend import models, schemas
-# Import specific functions from crud and utils to avoid circular imports
-from backend.crud import get_user_by_email # Import only what's needed from crud
-from backend.utils import get_password_hash, verify_password # Import password functions from utils
+# Import specific functions from crud and utils
+from backend.crud import get_user_by_email # Used for retrieving user by email
+from backend.utils import get_password_hash, verify_password # Used for password hashing/verification
+from backend.dependencies import get_db # ADDED: Import the get_db dependency
 
 # OAuth2 scheme for token authentication
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login") # This URL must match your actual login endpoint path
 
 # JWT configuration
-# SECRET_KEY should be loaded from environment variables in production
 SECRET_KEY = os.environ.get("SECRET_KEY", "your-super-secret-key-please-change-me-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30 # Token expiration time in minutes
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     """
-    Creates a JWT access token.
+    Creates a JWT access token with user data.
+    Ensures UUID objects (like user IDs) are converted to strings for JSON serialization.
     """
     to_encode = data.copy()
     if expires_delta:
@@ -33,22 +36,31 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     else:
         expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
+
+    # CRUCIAL FIX: Convert UUID to string before encoding into JWT payload
+    # This resolves TypeError: Object of type UUID is not JSON serializable
+    if "id" in to_encode and isinstance(to_encode["id"], uuid.UUID):
+        to_encode["id"] = str(to_encode["id"])
+
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
 def authenticate_user(db: Session, email: str, password: str) -> Optional[models.User]:
     """
-    Authenticates a user by email and password.
+    Authenticates a user by checking email and hashed password.
     """
-    user = get_user_by_email(db, email) # Use the imported get_user_by_email from crud
-    if not user or not verify_password(password, user.hashed_password): # Use verify_password from utils
+    user = get_user_by_email(db, email) # Retrieve user from database
+    if not user or not verify_password(password, user.hashed_password): # Verify password
         return None
     return user
 
-# This function is used as a dependency to get the current authenticated user
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(Session)) -> models.User:
+# --- Core User Dependencies (used across different roles) ---
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> models.User:
     """
-    Decodes the JWT token and retrieves the current user.
+    Decodes the JWT token from the request header and retrieves the current user.
+    This fixes the 'Session' object has no attribute 'rsplit' error by correctly
+    passing the database session using Depends(get_db).
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -56,14 +68,62 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
+        # The jwt.decode function expects a string token and a string key
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
         if email is None:
             raise credentials_exception
-        user = get_user_by_email(db, email) # Use the imported get_user_by_email from crud
+        user = get_user_by_email(db, email) # Retrieve user from database
         if user is None:
             raise credentials_exception
         return user
     except JWTError:
+        # Catch JWT specific errors (e.g., invalid token, expired token)
+        raise credentials_exception
+    except Exception as e:
+        # Catch any other unexpected errors during token processing
+        print(f"Error during get_current_user: {e}")
         raise credentials_exception
 
+async def get_current_active_user(current_user: Annotated[models.User, Depends(get_current_user)]):
+    """
+    Ensures the retrieved user is active.
+    """
+    if not current_user.is_active:
+        raise HTTPException(status_code=400, detail="Inactive user")
+    return current_user
+
+# --- Role-Specific User Dependencies ---
+
+async def get_current_admin_user(current_user: Annotated[models.User, Depends(get_current_active_user)]):
+    """
+    Ensures the current active user has the 'admin' role.
+    """
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to perform this action. Admin role required."
+        )
+    return current_user
+
+async def get_current_reviewer_user(current_user: Annotated[models.User, Depends(get_current_active_user)]):
+    """
+    Ensures the current active user has the 'reviewer' role.
+    """
+    if current_user.role != "reviewer":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to perform this action. Reviewer role required."
+        )
+    return current_user
+
+async def get_current_grantee_user(current_user: Annotated[models.User, Depends(get_current_active_user)]):
+    """
+    Ensures the current active user has the 'grantee' role.
+    """
+    if current_user.role != "grantee":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to perform this action. Grantee role required."
+        )
+    return current_user
