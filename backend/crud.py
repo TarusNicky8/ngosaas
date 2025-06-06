@@ -43,8 +43,7 @@ def create_document(db: Session, document: schemas.DocumentCreate) -> models.Doc
     Create a new document, storing its Supabase filename and URL.
     Handles converting string UUIDs from schema to uuid.UUID objects for model.
     """
-    # CRUCIAL FIX: Convert grantee_id from string to uuid.UUID object
-    # This addresses the 'cannot cast type numeric to uuid' during insertion.
+    # CRUCIAL FIX: Convert grantee_id from string (from schema) to uuid.UUID object (for model)
     grantee_uuid = uuid.UUID(document.grantee_id)
     
     # Convert assigned_reviewer_id from string to uuid.UUID object if it exists
@@ -65,6 +64,7 @@ def create_document(db: Session, document: schemas.DocumentCreate) -> models.Doc
 
 def get_document(db: Session, document_id: int) -> Optional[models.Document]:
     """Get a single document by its ID, eager loading related data."""
+    # document_id for documents is still INTEGER in your model, so no UUID conversion needed here.
     return db.query(models.Document).options(
         joinedload(models.Document.evaluations).joinedload(models.Evaluation.reviewer),
         joinedload(models.Document.uploader),
@@ -100,7 +100,7 @@ def assign_reviewer_to_document(db: Session, document_id: int, reviewer_id: str)
     """Assigns a reviewer to a specific document."""
     db_document = db.query(models.Document).filter(models.Document.id == document_id).first()
     if db_document:
-        # CRUCIAL FIX: Convert reviewer_id from string to uuid.UUID object
+        # CRUCIAL FIX: Convert reviewer_id from string (from schema) to uuid.UUID object (for model)
         db_document.assigned_reviewer_id = uuid.UUID(reviewer_id)
         db.add(db_document)
         db.commit()
