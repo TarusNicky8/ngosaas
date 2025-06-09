@@ -2,7 +2,7 @@
 
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
-import uuid # ADDED: Import uuid for explicit UUID type handling
+import uuid # CRUCIAL: Import uuid for explicit UUID type handling
 
 # Assuming models.py defines the SQLAlchemy models and schemas.py defines Pydantic schemas
 from . import models, schemas
