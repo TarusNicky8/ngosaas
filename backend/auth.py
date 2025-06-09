@@ -37,7 +37,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
         expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
 
-    # Crucial: Convert UUID to string before encoding into JWT payload
+    # CRUCIAL FIX: Convert UUID to string before encoding into JWT payload
     # This resolves TypeError: Object of type UUID is not JSON serializable
     if "id" in to_encode and isinstance(to_encode["id"], uuid.UUID):
         to_encode["id"] = str(to_encode["id"])

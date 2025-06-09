@@ -237,8 +237,9 @@ async def assign_reviewer_to_document_route(
             print(f"[DEBUG MAIN] Document {document_id} truly not found in DB.") # ADDED DEBUG
             raise HTTPException(status_code=404, detail="Document not found")
         else:
-            print(f"[DEBUG MAIN] Document {document_id} EXISTS, but assignment failed (reviewer likely invalid).") # ADDED DEBUG
+            # This branch should only be hit if document exists but assignment failed due to reviewer (e.g., invalid ID, not a reviewer role)
+            print(f"[DEBUG MAIN] Document {document_id} EXISTS, but assignment failed (reviewer likely invalid or other CRUD issue).") # ADDED DEBUG
             raise HTTPException(status_code=400, detail="Failed to assign reviewer. Reviewer might not exist or not have 'reviewer' role.")
     
-    print(f"[DEBUG MAIN] Document {document_id} successfully assigned reviewer.") # ADDED DEBUG
+    print(f"[DEBUG MAIN] Document {document_id} successfully assigned reviewer. Assigned reviewer ID: {db_document_model.assigned_reviewer_id}") # ADDED DEBUG
     return map_document_model_to_out_schema(db_document_model)
